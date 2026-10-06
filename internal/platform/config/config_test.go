@@ -10,7 +10,7 @@ import (
 // Изолирует тест от настроек окружения пользователя.
 func clearEnvironment(t *testing.T) {
 	t.Helper()
-	for _, key := range []string{"ORDERS_HTTP_ADDR", "ORDERS_DATABASE_URL", "ORDERS_DB_PASSWORD", "LOG_LEVEL", "CATALOG_BASE_URL"} {
+	for _, key := range []string{"ORDERS_HTTP_ADDR", "ORDERS_DATABASE_URL", "ORDERS_DB_PASSWORD", "LOG_LEVEL", "CATALOG_GRPC_ADDR"} {
 		t.Setenv(key, "")
 		if err := os.Unsetenv(key); err != nil {
 			t.Fatal(err)
@@ -30,8 +30,8 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.HTTPAddr != ":8080" || cfg.LogLevel != slog.LevelInfo || cfg.DatabaseURL != "postgres://orders_app@localhost/orders_db" || cfg.DatabasePassword != " secret with spaces " {
 		t.Fatal("unexpected defaults or modified credentials")
 	}
-	if cfg.CatalogBaseURL != "http://127.0.0.1:8082" {
-		t.Fatal("unexpected catalog URL")
+	if cfg.CatalogGRPCAddr != "127.0.0.1:9082" {
+		t.Fatal("unexpected catalog gRPC address")
 	}
 }
 
@@ -119,27 +119,27 @@ func TestOrdersRequiredEnvironment(t *testing.T) {
 	})
 }
 
-// Проверяет чтение и очистку адреса каталога.
-func TestOrdersCatalogURL(t *testing.T) {
+// Проверяет чтение и очистку gRPC-адреса каталога.
+func TestOrdersCatalogGRPCAddress(t *testing.T) {
 	for _, tc := range []struct {
 		raw   string
 		valid bool
 	}{
-		{" http://localhost:8082/ ", true}, {"", false}, {" \t ", false},
+		{" localhost:9082 ", true}, {"", false}, {" \t ", false},
 	} {
 		t.Run(tc.raw, func(t *testing.T) {
 			clearEnvironment(t)
 			t.Setenv("ORDERS_DATABASE_URL", "postgres://orders_app@localhost/orders_db")
 			t.Setenv("ORDERS_DB_PASSWORD", "test")
-			t.Setenv("CATALOG_BASE_URL", tc.raw)
+			t.Setenv("CATALOG_GRPC_ADDR", tc.raw)
 			cfg, err := LoadOrders()
 			if (err == nil) != tc.valid {
 				t.Fatalf("error=%v", err)
 			}
-			if tc.valid && cfg.CatalogBaseURL != strings.TrimSpace(tc.raw) {
-				t.Fatalf("URL=%q", cfg.CatalogBaseURL)
+			if tc.valid && cfg.CatalogGRPCAddr != strings.TrimSpace(tc.raw) {
+				t.Fatalf("address=%q", cfg.CatalogGRPCAddr)
 			}
-			if !tc.valid && !strings.Contains(err.Error(), "CATALOG_BASE_URL") {
+			if !tc.valid && !strings.Contains(err.Error(), "CATALOG_GRPC_ADDR") {
 				t.Fatalf("error=%v", err)
 			}
 		})

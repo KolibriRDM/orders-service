@@ -12,7 +12,7 @@ type OrdersConfig struct {
 	HTTPAddr         string
 	DatabaseURL      string
 	DatabasePassword string
-	CatalogBaseURL   string
+	CatalogGRPCAddr  string
 	LogLevel         slog.Level
 }
 
@@ -36,19 +36,19 @@ func LoadOrders() (OrdersConfig, error) {
 		return OrdersConfig{}, err
 	}
 
-	catalogBaseURL, exists := os.LookupEnv("CATALOG_BASE_URL")
+	catalogGRPCAddr, exists := os.LookupEnv("CATALOG_GRPC_ADDR")
 	if !exists {
-		catalogBaseURL = "http://127.0.0.1:8082"
+		catalogGRPCAddr = "127.0.0.1:9082"
 	}
-	catalogBaseURL = strings.TrimSpace(catalogBaseURL)
-	if catalogBaseURL == "" {
-		return OrdersConfig{}, errors.New("CATALOG_BASE_URL must not be empty")
+	catalogGRPCAddr = strings.TrimSpace(catalogGRPCAddr)
+	if catalogGRPCAddr == "" {
+		return OrdersConfig{}, errors.New("CATALOG_GRPC_ADDR must not be empty")
 	}
 	return OrdersConfig{
 		HTTPAddr:         addr,
 		DatabaseURL:      dsn,
 		DatabasePassword: databasePass,
 		LogLevel:         level,
-		CatalogBaseURL:   catalogBaseURL,
+		CatalogGRPCAddr:  catalogGRPCAddr,
 	}, nil
 }

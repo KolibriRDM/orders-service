@@ -40,10 +40,11 @@ func run() error {
 
 	logger := slog.New(logHandler).With("service", "orders-service")
 
-	catalogClient, err := catalogclient.NewClient(cfg.CatalogBaseURL)
+	catalogClient, err := catalogclient.NewClient(cfg.CatalogGRPCAddr)
 	if err != nil {
 		return fmt.Errorf("create catalog client: %w", err)
 	}
+	defer catalogClient.Close()
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
