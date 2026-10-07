@@ -34,7 +34,7 @@ func TestServiceBoundariesAndDependencyDirection(t *testing.T) {
 				}
 			}
 			inner := strings.HasPrefix(path, "model/") || strings.HasPrefix(path, "service/")
-			infrastructure := strings.Contains(dependency, "/repository") || strings.Contains(dependency, "/handler") || strings.Contains(dependency, "/catalogclient") || strings.Contains(dependency, "jackc/pgx") || dependency == "net/http" || strings.HasPrefix(dependency, "google.golang.org/grpc") || strings.HasPrefix(dependency, "google.golang.org/protobuf")
+			infrastructure := strings.Contains(dependency, "/repository") || strings.Contains(dependency, "/handler") || strings.Contains(dependency, "/catalogclient") || strings.Contains(dependency, "/kafkapublisher") || strings.HasPrefix(dependency, "github.com/twmb/franz-go") || strings.Contains(dependency, "jackc/pgx") || dependency == "net/http" || strings.HasPrefix(dependency, "google.golang.org/grpc") || strings.HasPrefix(dependency, "google.golang.org/protobuf")
 			if inner && infrastructure {
 				t.Errorf("inner layer %s imports infrastructure: %s", path, dependency)
 			}

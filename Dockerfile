@@ -3,9 +3,11 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -o /out/service ./cmd/orders
+RUN CGO_ENABLED=0 go build -trimpath -o /out/service ./cmd/orders \
+    && CGO_ENABLED=0 go build -trimpath -o /out/healthcheck ./cmd/healthcheck
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /out/service /service
+COPY --from=build /out/healthcheck /healthcheck
 EXPOSE 8080
 ENTRYPOINT ["/service"]

@@ -16,4 +16,6 @@ var (
 	ErrDatabaseUnavailable = errors.New("orders database unavailable")
 
 	ErrIdempotencyConflict = errors.New("idempotency key already used for another request")
+
+	ErrPublishFailed = errors.New("event publish failed")
 )

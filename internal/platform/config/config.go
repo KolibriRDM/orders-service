@@ -7,13 +7,15 @@ import (
 	"strings"
 )
 
-// Настройки HTTP, БД, каталога и логирования заказов.
+// Настройки HTTP, БД, каталога, Kafka и логирования заказов.
 type OrdersConfig struct {
-	HTTPAddr         string
-	DatabaseURL      string
-	DatabasePassword string
-	CatalogGRPCAddr  string
-	LogLevel         slog.Level
+	HTTPAddr          string
+	DatabaseURL       string
+	DatabasePassword  string
+	CatalogGRPCAddr   string
+	LogLevel          slog.Level
+	KafkaBrokers      []string
+	OrderCreatedTopic string
 }
 
 // Читает и проверяет настройки заказов из окружения.
@@ -44,11 +46,33 @@ func LoadOrders() (OrdersConfig, error) {
 	if catalogGRPCAddr == "" {
 		return OrdersConfig{}, errors.New("CATALOG_GRPC_ADDR must not be empty")
 	}
+	brokersRaw, exists := os.LookupEnv("KAFKA_BROKERS")
+	if !exists {
+		brokersRaw = "127.0.0.1:19092"
+	}
+	brokers := strings.Split(brokersRaw, ",")
+	for i := range brokers {
+		brokers[i] = strings.TrimSpace(brokers[i])
+		if brokers[i] == "" {
+			return OrdersConfig{}, errors.New("KAFKA_BROKERS must contain non-empty broker addresses")
+		}
+	}
+	topic, exists := os.LookupEnv("ORDER_CREATED_TOPIC")
+	if !exists {
+		topic = "food.order-created.v1"
+	}
+	topic = strings.TrimSpace(topic)
+	if topic == "" {
+		return OrdersConfig{}, errors.New("ORDER_CREATED_TOPIC must not be empty")
+	}
+
 	return OrdersConfig{
-		HTTPAddr:         addr,
-		DatabaseURL:      dsn,
-		DatabasePassword: databasePass,
-		LogLevel:         level,
-		CatalogGRPCAddr:  catalogGRPCAddr,
+		HTTPAddr:          addr,
+		DatabaseURL:       dsn,
+		DatabasePassword:  databasePass,
+		LogLevel:          level,
+		CatalogGRPCAddr:   catalogGRPCAddr,
+		KafkaBrokers:      brokers,
+		OrderCreatedTopic: topic,
 	}, nil
 }

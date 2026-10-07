@@ -14,6 +14,7 @@ import (
 
 	"github.com/KolibriRDM/orders-service/internal/catalogclient"
 	"github.com/KolibriRDM/orders-service/internal/handler"
+	"github.com/KolibriRDM/orders-service/internal/kafkapublisher"
 	"github.com/KolibriRDM/orders-service/internal/platform/config"
 	"github.com/KolibriRDM/orders-service/internal/platform/postgres"
 	"github.com/KolibriRDM/orders-service/internal/repository"
@@ -57,7 +58,13 @@ func run() error {
 		return fmt.Errorf("create database pool: %w", err)
 	}
 	defer pool.Close()
+	publisher, err := kafkapublisher.NewPublisher(cfg.KafkaBrokers, cfg.OrderCreatedTopic)
+	if err != nil {
+		return fmt.Errorf("create Kafka publisher: %w", err)
+	}
+	defer publisher.Close()
 	ordersRepository := repository.NewRepository(pool)
+	outboxService := service.NewOutboxService(ordersRepository, publisher, logger)
 	ordersService := service.NewService(ordersRepository, catalogClient)
 	ordersHandler := handler.NewHandler(ordersService, logger)
 
@@ -81,6 +88,20 @@ func run() error {
 	}
 	defer listener.Close()
 	defer srv.Close()
+
+	relayCtx, cancelRelay := context.WithCancel(ctx)
+	relayDone := make(chan struct{})
+
+	// Канал закрывается только после полного завершения relay.
+	go func() {
+		defer close(relayDone)
+		outboxService.Run(relayCtx)
+	}()
+	// Останавливаем relay до закрытия Kafka-клиента и пула БД.
+	defer func() {
+		cancelRelay()
+		<-relayDone
+	}()
 
 	// Буфер позволяет серверу сообщить об остановке, не ожидая читателя.
 	serverErr := make(chan error, 1)
@@ -118,7 +139,6 @@ func run() error {
 		return fmt.Errorf("serve HTTP: %w", err)
 	}
 	cancelRequests()
-	pool.Close()
-	logger.Info("HTTP server stopped; database pool closed")
+	logger.Info("HTTP server stopped")
 	return nil
 }

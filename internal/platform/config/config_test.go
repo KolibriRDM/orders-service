@@ -10,7 +10,7 @@ import (
 // Изолирует тест от настроек окружения пользователя.
 func clearEnvironment(t *testing.T) {
 	t.Helper()
-	for _, key := range []string{"ORDERS_HTTP_ADDR", "ORDERS_DATABASE_URL", "ORDERS_DB_PASSWORD", "LOG_LEVEL", "CATALOG_GRPC_ADDR"} {
+	for _, key := range []string{"ORDERS_HTTP_ADDR", "ORDERS_DATABASE_URL", "ORDERS_DB_PASSWORD", "LOG_LEVEL", "CATALOG_GRPC_ADDR", "KAFKA_BROKERS", "ORDER_CREATED_TOPIC"} {
 		t.Setenv(key, "")
 		if err := os.Unsetenv(key); err != nil {
 			t.Fatal(err)
@@ -141,6 +141,53 @@ func TestOrdersCatalogGRPCAddress(t *testing.T) {
 			}
 			if !tc.valid && !strings.Contains(err.Error(), "CATALOG_GRPC_ADDR") {
 				t.Fatalf("error=%v", err)
+			}
+		})
+	}
+}
+
+// Проверяет defaults, пробелы и пустые элементы настроек Kafka.
+func TestOrdersKafkaConfig(t *testing.T) {
+	for _, tc := range []struct {
+		name, brokers, topic string
+		defaults, valid      bool
+		want                 string
+	}{
+		{name: "defaults", defaults: true, valid: true},
+		{name: "multiple trimmed", brokers: " localhost:19092, kafka:9092 ", topic: " custom.events ", valid: true},
+		{name: "empty", brokers: "", topic: "topic", want: "KAFKA_BROKERS"},
+		{name: "whitespace", brokers: " \t ", topic: "topic", want: "KAFKA_BROKERS"},
+		{name: "empty middle", brokers: "host:9092, ,other:9092", topic: "topic", want: "KAFKA_BROKERS"},
+		{name: "trailing comma", brokers: "host:9092,", topic: "topic", want: "KAFKA_BROKERS"},
+		{name: "empty topic", brokers: "host:9092", want: "ORDER_CREATED_TOPIC"},
+		{name: "blank topic", brokers: "host:9092", topic: " \t ", want: "ORDER_CREATED_TOPIC"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			clearEnvironment(t)
+			t.Setenv("ORDERS_DATABASE_URL", "postgres://orders_app@localhost/orders_db")
+			t.Setenv("ORDERS_DB_PASSWORD", "test")
+			if !tc.defaults {
+				t.Setenv("KAFKA_BROKERS", tc.brokers)
+				t.Setenv("ORDER_CREATED_TOPIC", tc.topic)
+			}
+			cfg, err := LoadOrders()
+			if !tc.valid {
+				if err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("err=%v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.defaults {
+				if len(cfg.KafkaBrokers) != 1 || cfg.KafkaBrokers[0] != "127.0.0.1:19092" || cfg.OrderCreatedTopic != "food.order-created.v1" {
+					t.Fatalf("Kafka defaults=%v %q", cfg.KafkaBrokers, cfg.OrderCreatedTopic)
+				}
+			} else {
+				if strings.Join(cfg.KafkaBrokers, ",") != "localhost:19092,kafka:9092" || cfg.OrderCreatedTopic != "custom.events" {
+					t.Fatalf("Kafka config=%v %q", cfg.KafkaBrokers, cfg.OrderCreatedTopic)
+				}
 			}
 		})
 	}

@@ -10,5 +10,6 @@ type OutboxEvent struct {
 	OrderID   string
 	Type      string
 	Payload   []byte
+	Attempts  int
 	CreatedAt time.Time
 }

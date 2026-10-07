@@ -221,6 +221,10 @@ func TestOrdersRepositoryPostgres(t *testing.T) {
 		})
 	})
 
+	t.Run("outbox relay repository", func(t *testing.T) {
+		testOutboxPostgres(t, ctx, pool)
+	})
+
 	t.Run("create idempotent", func(t *testing.T) {
 		testCreateIdempotentPostgres(t, ctx, pool, cfg)
 	})
