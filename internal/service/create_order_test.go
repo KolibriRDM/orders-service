@@ -36,6 +36,11 @@ func (r *createOrderRepositoryStub) GetByID(context.Context, string) (model.Orde
 	panic("CreateOrder must not call GetByID")
 }
 
+// Выявляет неожиданное изменение статуса при создании заказа.
+func (r *createOrderRepositoryStub) UpdateStatus(context.Context, string, int64, model.OrderStatus, time.Time) (model.Order, error) {
+	panic("CreateOrder must not call UpdateStatus")
+}
+
 // Тестовая подмена получения блюд каталога.
 type createOrderCatalogStub func(context.Context, string, []string) ([]model.MenuItem, error)
 

@@ -12,8 +12,12 @@ import (
 func RegisterRoutes(mux *http.ServeMux, h *Handler) {
 	mux.HandleFunc("POST /v1/orders", h.CreateOrder)
 	mux.HandleFunc("GET /v1/orders/{id}", h.GetOrder)
+	mux.HandleFunc("POST /v1/orders/{id}/cancel", h.CancelOrder)
+	mux.HandleFunc("PATCH /v1/orders/{id}/status", h.UpdateOrderStatus)
 	mux.HandleFunc("/v1/orders", h.methodNotAllowed("POST"))
 	mux.HandleFunc("/v1/orders/{id}", h.methodNotAllowed("GET, HEAD"))
+	mux.HandleFunc("/v1/orders/{id}/cancel", h.methodNotAllowed("POST"))
+	mux.HandleFunc("/v1/orders/{id}/status", h.methodNotAllowed("PATCH"))
 }
 
 // Объединяет маршруты, проверки работоспособности и журналирование.

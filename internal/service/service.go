@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"time"
+
 	//? "time"
 
 	"github.com/KolibriRDM/orders-service/internal/model"
@@ -15,7 +17,8 @@ type Repository interface {
 	// Находит заказ и хеш по пользователю и ключу.
 	GetByIdempotencyKey(ctx context.Context, userID string, key string) (model.IdempotentOrder, error)
 	GetByID(ctx context.Context, id string) (model.Order, error)
-	//? UpdateStatus(ctx context.Context, id string, expectedVersion int64, nextStatus model.OrderStatus, updatedAt time.Time) (model.Order, error)
+	// Атомарно меняет статус при совпадении ожидаемой версии.
+	UpdateStatus(ctx context.Context, id string, expectedVersion int64, nextStatus model.OrderStatus, updatedAt time.Time) (model.Order, error)
 }
 
 // Контракт получения проверенных блюд из каталога.

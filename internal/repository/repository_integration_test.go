@@ -229,4 +229,8 @@ func TestOrdersRepositoryPostgres(t *testing.T) {
 		testCreateIdempotentPostgres(t, ctx, pool, cfg)
 	})
 
+	t.Run("update status", func(t *testing.T) {
+		testUpdateStatusPostgres(t, ctx, cfg)
+	})
+
 }

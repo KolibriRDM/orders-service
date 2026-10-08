@@ -14,6 +14,8 @@ import (
 type Service interface {
 	CreateOrder(ctx context.Context, input model.CreateOrderInput) (model.CreateOrderResult, error)
 	GetOrder(ctx context.Context, userID string, orderID string) (model.Order, error)
+	CancelOrder(ctx context.Context, userID string, orderID string, expectedVersion int64) (model.Order, error)
+	UpdateOrderStatus(ctx context.Context, isStaff bool, orderID string, expectedVersion int64, nextStatus model.OrderStatus) (model.Order, error)
 }
 
 // HTTP-обработчики с зависимостями сервиса и логирования.

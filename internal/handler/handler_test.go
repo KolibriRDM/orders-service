@@ -20,10 +20,12 @@ import (
 	ordersservice "github.com/KolibriRDM/orders-service/internal/service"
 )
 
-// Тестовая подмена создания и чтения заказов.
+// Тестовая подмена бизнес-операций над заказами.
 type orderServiceStub struct {
-	create func(context.Context, model.CreateOrderInput) (model.CreateOrderResult, error)
-	get    func(context.Context, string, string) (model.Order, error)
+	create       func(context.Context, model.CreateOrderInput) (model.CreateOrderResult, error)
+	get          func(context.Context, string, string) (model.Order, error)
+	cancel       func(context.Context, string, string, int64) (model.Order, error)
+	updateStatus func(context.Context, bool, string, int64, model.OrderStatus) (model.Order, error)
 }
 
 // Вызывает тестовую подмену операции.
@@ -34,6 +36,16 @@ func (s orderServiceStub) CreateOrder(ctx context.Context, input model.CreateOrd
 // Вызывает тестовую подмену операции.
 func (s orderServiceStub) GetOrder(ctx context.Context, userID, orderID string) (model.Order, error) {
 	return s.get(ctx, userID, orderID)
+}
+
+// Вызывает тестовую подмену отмены заказа.
+func (s orderServiceStub) CancelOrder(ctx context.Context, userID, orderID string, version int64) (model.Order, error) {
+	return s.cancel(ctx, userID, orderID, version)
+}
+
+// Вызывает тестовую подмену изменения статуса.
+func (s orderServiceStub) UpdateOrderStatus(ctx context.Context, isStaff bool, orderID string, version int64, status model.OrderStatus) (model.Order, error) {
+	return s.updateStatus(ctx, isStaff, orderID, version, status)
 }
 
 // Собирает настоящий роутер с тестовым сервисом.
