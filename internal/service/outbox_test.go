@@ -21,6 +21,7 @@ type outboxRepositoryStub struct {
 	list  func(context.Context, int) ([]model.OutboxEvent, error)
 	mark  func(context.Context, string, time.Time) (bool, error)
 	retry func(context.Context, string, time.Time) (bool, error)
+	stats func(context.Context) (model.OutboxStats, error)
 }
 
 // Передаёт чтение пачки тестовому сценарию.
@@ -105,7 +106,7 @@ func TestOutboxPublishBatchSuccess(t *testing.T) {
 		index++
 		return nil
 	})
-	s := NewOutboxService(repo, publisher, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s := NewOutboxService(repo, publisher, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err := s.PublishBatch(parent); err != nil {
 		t.Fatal(err)
 	}
@@ -154,7 +155,7 @@ func TestOutboxPublishBatchRetry(t *testing.T) {
 				}
 				return nil
 			})
-			s := NewOutboxService(repo, publisher, slog.New(slog.NewJSONHandler(&logs, nil)))
+			s := NewOutboxService(repo, publisher, nil, slog.New(slog.NewJSONHandler(&logs, nil)))
 			if err := s.PublishBatch(context.Background()); err != nil {
 				t.Fatal(err)
 			}
@@ -200,7 +201,7 @@ func TestOutboxPublishBatchDatabaseErrors(t *testing.T) {
 				}
 				return nil
 			})
-			s := NewOutboxService(repo, publisher, slog.New(slog.NewTextHandler(io.Discard, nil)))
+			s := NewOutboxService(repo, publisher, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 			err := s.PublishBatch(context.Background())
 			if !errors.Is(err, cause) || !errors.Is(err, orderserrors.ErrDatabaseUnavailable) {
 				t.Fatalf("err=%v", err)
@@ -223,7 +224,7 @@ func TestOutboxPublishBatchDatabaseErrors(t *testing.T) {
 func TestOutboxPublishBatchEmptyAndUnchanged(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
 		repo := &outboxRepositoryStub{list: func(context.Context, int) ([]model.OutboxEvent, error) { return nil, nil }}
-		if err := NewOutboxService(repo, nil, nil).PublishBatch(context.Background()); err != nil {
+		if err := NewOutboxService(repo, nil, nil, nil).PublishBatch(context.Background()); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -243,7 +244,7 @@ func TestOutboxPublishBatchEmptyAndUnchanged(t *testing.T) {
 				}
 				return nil
 			})
-			s := NewOutboxService(repo, publisher, slog.New(slog.NewJSONHandler(&logs, nil)))
+			s := NewOutboxService(repo, publisher, nil, slog.New(slog.NewJSONHandler(&logs, nil)))
 			if err := s.PublishBatch(context.Background()); err != nil {
 				t.Fatal(err)
 			}
@@ -288,7 +289,7 @@ func TestOutboxPublishBatchCancellation(t *testing.T) {
 				}
 				return nil
 			})
-			s := NewOutboxService(repo, publisher, slog.New(slog.NewTextHandler(io.Discard, nil)))
+			s := NewOutboxService(repo, publisher, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 			if err := s.PublishBatch(ctx); !errors.Is(err, context.Canceled) {
 				t.Fatalf("err=%v", err)
 			}
@@ -338,7 +339,7 @@ func TestOutboxPublishBatchParentDeadline(t *testing.T) {
 				}
 				return nil
 			})
-			s := NewOutboxService(repo, publisher, slog.New(slog.NewTextHandler(io.Discard, nil)))
+			s := NewOutboxService(repo, publisher, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 			if err := s.PublishBatch(ctx); !errors.Is(err, context.DeadlineExceeded) {
 				t.Fatalf("err=%v", err)
 			}
@@ -368,4 +369,9 @@ func TestRetryDelayBounds(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Передаёт чтение статистики тестовому сценарию.
+func (r *outboxRepositoryStub) GetOutboxStats(ctx context.Context) (model.OutboxStats, error) {
+	return r.stats(ctx)
 }

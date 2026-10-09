@@ -58,7 +58,7 @@ func TestDecodeCreateOrderRequest(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-			h := NewHandler(nil, logger)
+			h := NewHandler(nil, nil, logger)
 			body := &trackedBody{Reader: strings.NewReader(tc.body)}
 			r := httptest.NewRequest(http.MethodPost, "/v1/orders", nil)
 			r.Body = body
@@ -111,7 +111,7 @@ func TestOrdersErrorResponses(t *testing.T) {
 	} {
 		t.Run(tc.err.Error(), func(t *testing.T) {
 			var logs strings.Builder
-			h := NewHandler(nil, slog.New(slog.NewTextHandler(&logs, nil)))
+			h := NewHandler(nil, nil, slog.New(slog.NewTextHandler(&logs, nil)))
 			w := httptest.NewRecorder()
 			w.Header().Set("X-Request-ID", "request-123")
 			h.handleError(w, fmt.Errorf("private-address: %w", tc.err))
@@ -134,7 +134,7 @@ func TestOrdersErrorResponses(t *testing.T) {
 
 // Проверяет ответ 500 при ошибке сериализации JSON.
 func TestWriteJSONEncodingFailure(t *testing.T) {
-	h := NewHandler(nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	h := NewHandler(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	w := httptest.NewRecorder()
 	w.Header().Set("X-Request-ID", "encode-failure")
 	h.writeJSON(w, http.StatusCreated, make(chan int))
@@ -151,10 +151,10 @@ func TestWriteJSONEncodingFailure(t *testing.T) {
 func TestRequestIDAndSafeAccessLog(t *testing.T) {
 	var logs strings.Builder
 	logger := slog.New(slog.NewTextHandler(&logs, nil))
-	h := NewHandler(nil, logger)
+	h := NewHandler(nil, nil, logger)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/orders/{id}", func(w http.ResponseWriter, r *http.Request) { h.handleError(w, orderserrors.ErrNotFound) })
-	wrapped := requestMiddleware(logger, mux)
+	wrapped := requestMiddleware(logger, newHTTPMetricsForTest(), mux)
 	seen := make(map[string]bool)
 	for range 2 {
 		r := httptest.NewRequest(http.MethodGet, "/v1/orders/private-id?address=private-address", nil)
@@ -194,7 +194,7 @@ func TestOrderResponseEmptyItemsContract(t *testing.T) {
 
 // Проверяет отсутствие ответа на отменённый запрос.
 func TestCancelledRequestDoesNotWriteError(t *testing.T) {
-	h := NewHandler(nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	h := NewHandler(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	w := &responseWriter{ResponseWriter: httptest.NewRecorder()}
 	h.handleError(w, fmt.Errorf("request: %w", context.Canceled))
 	if w.status != 0 {

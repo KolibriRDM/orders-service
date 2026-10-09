@@ -53,3 +53,13 @@ func TestOutboxCancelledContext(t *testing.T) {
 		})
 	}
 }
+
+// Отменённая статистика возвращает нули без обращения к БД.
+func TestOutboxStatsCancelledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	stats, err := repository.NewRepository(nil).GetOutboxStats(ctx)
+	if !errors.Is(err, context.Canceled) || stats.PendingEvents != 0 || stats.OldestPendingAgeSeconds != 0 {
+		t.Fatalf("stats=%+v err=%v", stats, err)
+	}
+}

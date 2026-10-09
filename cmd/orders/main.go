@@ -16,7 +16,10 @@ import (
 	"github.com/KolibriRDM/orders-service/internal/handler"
 	"github.com/KolibriRDM/orders-service/internal/kafkapublisher"
 	"github.com/KolibriRDM/orders-service/internal/platform/config"
+	"github.com/KolibriRDM/orders-service/internal/platform/metrics"
 	"github.com/KolibriRDM/orders-service/internal/platform/postgres"
+	redisplatform "github.com/KolibriRDM/orders-service/internal/platform/redis"
+	"github.com/KolibriRDM/orders-service/internal/ratelimiter"
 	"github.com/KolibriRDM/orders-service/internal/repository"
 	"github.com/KolibriRDM/orders-service/internal/service"
 )
@@ -41,6 +44,9 @@ func run() error {
 
 	logger := slog.New(logHandler).With("service", "orders-service")
 
+	// Один реестр используется для записи и экспорта метрик процесса.
+	serviceMetrics := metrics.NewMetrics()
+
 	catalogClient, err := catalogclient.NewClient(cfg.CatalogGRPCAddr)
 	if err != nil {
 		return fmt.Errorf("create catalog client: %w", err)
@@ -55,7 +61,7 @@ func run() error {
 		if ctx.Err() != nil {
 			return nil
 		}
-		return fmt.Errorf("create database pool: %w", err)
+		return fmt.Errorf("database create pool: %w", err)
 	}
 	defer pool.Close()
 	publisher, err := kafkapublisher.NewPublisher(cfg.KafkaBrokers, cfg.OrderCreatedTopic)
@@ -64,9 +70,13 @@ func run() error {
 	}
 	defer publisher.Close()
 	ordersRepository := repository.NewRepository(pool)
-	outboxService := service.NewOutboxService(ordersRepository, publisher, logger)
+	outboxService := service.NewOutboxService(ordersRepository, publisher, serviceMetrics, logger)
 	ordersService := service.NewService(ordersRepository, catalogClient)
-	ordersHandler := handler.NewHandler(ordersService, logger)
+	// Ленивое подключение позволяет запуститься при недоступном Redis.
+	redisClient := redisplatform.NewClient(cfg.RedisAddr)
+	defer redisClient.Close()
+	orderLimiter := ratelimiter.NewLimiter(redisClient)
+	ordersHandler := handler.NewHandler(ordersService, orderLimiter, logger)
 
 	// Штатная остановка ждёт запросы; принудительная отменяет их контексты.
 	requestsCtx, cancelRequests := context.WithCancel(context.Background())
@@ -74,7 +84,7 @@ func run() error {
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           handler.NewRouter(logger, pool.Ping, ordersHandler),
+		Handler:           handler.NewRouter(logger, pool.Ping, ordersHandler, serviceMetrics),
 		ReadHeaderTimeout: 2 * time.Second,
 		ReadTimeout:       5 * time.Second,
 		WriteTimeout:      10 * time.Second,
@@ -91,16 +101,24 @@ func run() error {
 
 	relayCtx, cancelRelay := context.WithCancel(ctx)
 	relayDone := make(chan struct{})
+	metricsDone := make(chan struct{})
 
 	// Канал закрывается только после полного завершения relay.
 	go func() {
 		defer close(relayDone)
 		outboxService.Run(relayCtx)
 	}()
-	// Останавливаем relay до закрытия Kafka-клиента и пула БД.
+
+	// Статистика обновляется даже при задержках публикации в Kafka.
+	go func() {
+		defer close(metricsDone)
+		outboxService.RunMetrics(relayCtx)
+	}()
+	// Ждём остановку relay и измерений до закрытия зависимостей.
 	defer func() {
 		cancelRelay()
 		<-relayDone
+		<-metricsDone
 	}()
 
 	// Буфер позволяет серверу сообщить об остановке, не ожидая читателя.

@@ -172,7 +172,7 @@ Relay подключён в main: первый проход запускаетс
 `food.order-created.v1`). При запуске в Compose адрес брокера — `kafka:9092`.
 Ошибки Kafka не останавливают HTTP; ошибки БД логируются, цикл пробует снова.
 При завершении процесс отменяет relay и ждёт его до закрытия Kafka-клиента и БД.
-Consumer notifications пока не подключён: автоматическое уведомление — следующий шаг.
+Consumer notifications сохраняет уведомление по событию, а повторную доставку распознаёт по event_id.
 
 Из infrastructure команда `make test-orders-relay` проверяет настоящий процесс
 orders, доставку outbox, накопление при отказе отдельного тестового Kafka-брокера,
@@ -186,3 +186,33 @@ KAFKA_TEST_BROKERS=127.0.0.1:19092 go test -tags=integration -race -count=1 -run
 ```
 
 Kafka должна быть запущена командой `make kafka-up` из infrastructure.
+
+
+## Метрики и JSON-логи
+
+`GET /metrics` экспортирует отдельный реестр процесса (`http://localhost:8080/metrics`).
+Для работающего Compose потребуется пересборка приложения.
+
+- `food_http_requests_total{service="orders-service",method,route,status}` — число HTTP-запросов.
+- `food_http_request_duration_seconds{service="orders-service",method,route}` — длительность запросов в секундах.
+- `food_outbox_pending_events{service="orders-service"}` — все неопубликованные события, включая отложенные повторы.
+- `food_outbox_oldest_pending_age_seconds{service="orders-service"}` — возраст самого старого неопубликованного события.
+- `food_outbox_stats_up{service="orders-service"}` — успешность последнего измерения: 1 или 0.
+
+Статистика читается сразу после запуска и через 5 секунд после каждого завершённого
+опроса. SQL ограничен двумя секундами; отдельная горутина продолжает измерения при
+задержках публикации в Kafka. При ошибке сохраняются предыдущие pending/age, а
+stats_up становится 0; до первого успешного измерения все три показателя равны 0.
+Пустая очередь даёт pending=0 и age=0. Возраст вычисляется по времени PostgreSQL
+и ограничен снизу нулём. Перед закрытием зависимостей main ждёт обе фоновые горутины.
+
+HTTP использует шаблоны маршрутов без UUID, неизвестные пути — `unmatched`, методы —
+`OTHER`. `/metrics`, `/healthz` и `/readyz` исключены из прикладного RPS.
+Если ответ ещё не отправлен, отмена отмечается диагностическим 499, дедлайн — 504;
+эти коды middleware не отправляет клиенту. ID присутствуют только в логах, не в labels.
+
+JSON-лог `order creation handled` связывает request_id и order_id; created=false
+означает идемпотентный повтор. `outbox event published` связывает order_id и event_id
+после подтверждения Kafka и успешной отметки БД. Повторы публикации также содержат
+эти ID; ошибка обновления БД сохраняет их в контексте ошибки пачки. Payload, адрес
+доставки и ключ идемпотентности в эти записи не включаются.

@@ -13,3 +13,9 @@ type OutboxEvent struct {
 	Attempts  int
 	CreatedAt time.Time
 }
+
+// Снимок количества и возраста неопубликованных событий.
+type OutboxStats struct {
+	PendingEvents           int64
+	OldestPendingAgeSeconds float64
+}

@@ -32,7 +32,7 @@ func TestOutboxRunRetriesBatch(t *testing.T) {
 		cancel()
 		return nil, nil
 	}}
-	s := NewOutboxService(repo, nil, slog.New(slog.NewTextHandler(&logs, nil)))
+	s := NewOutboxService(repo, nil, nil, slog.New(slog.NewTextHandler(&logs, nil)))
 	started := time.Now()
 	s.Run(ctx)
 	if calls != 2 || completed.Sub(started) >= outboxPollInterval {
@@ -70,7 +70,7 @@ func TestOutboxRunCancellationDuringBatch(t *testing.T) {
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}}
-	s := NewOutboxService(repo, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s := NewOutboxService(repo, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	go func() { s.Run(ctx); close(done) }()
 	select {
 	case <-started:
@@ -102,7 +102,7 @@ func TestOutboxRunCancellationWhileIdle(t *testing.T) {
 		readCtx <- ctx
 		return nil, nil
 	}}
-	s := NewOutboxService(repo, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	s := NewOutboxService(repo, nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	go func() { s.Run(ctx); close(done) }()
 	select {
 	case child := <-readCtx:

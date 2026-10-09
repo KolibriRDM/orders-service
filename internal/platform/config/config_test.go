@@ -10,7 +10,7 @@ import (
 // Изолирует тест от настроек окружения пользователя.
 func clearEnvironment(t *testing.T) {
 	t.Helper()
-	for _, key := range []string{"ORDERS_HTTP_ADDR", "ORDERS_DATABASE_URL", "ORDERS_DB_PASSWORD", "LOG_LEVEL", "CATALOG_GRPC_ADDR", "KAFKA_BROKERS", "ORDER_CREATED_TOPIC"} {
+	for _, key := range []string{"ORDERS_HTTP_ADDR", "ORDERS_DATABASE_URL", "ORDERS_DB_PASSWORD", "LOG_LEVEL", "CATALOG_GRPC_ADDR", "KAFKA_BROKERS", "ORDER_CREATED_TOPIC", "ORDERS_REDIS_ADDR"} {
 		t.Setenv(key, "")
 		if err := os.Unsetenv(key); err != nil {
 			t.Fatal(err)
@@ -27,7 +27,7 @@ func TestLoadDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.HTTPAddr != ":8080" || cfg.LogLevel != slog.LevelInfo || cfg.DatabaseURL != "postgres://orders_app@localhost/orders_db" || cfg.DatabasePassword != " secret with spaces " {
+	if cfg.RedisAddr != "127.0.0.1:16379" || cfg.HTTPAddr != ":8080" || cfg.LogLevel != slog.LevelInfo || cfg.DatabaseURL != "postgres://orders_app@localhost/orders_db" || cfg.DatabasePassword != " secret with spaces " {
 		t.Fatal("unexpected defaults or modified credentials")
 	}
 	if cfg.CatalogGRPCAddr != "127.0.0.1:9082" {

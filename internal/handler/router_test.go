@@ -107,7 +107,7 @@ func TestProbeMethods(t *testing.T) {
 
 // Собирает роутер для проверки health и readiness.
 func newProbeRouter(logger *slog.Logger, checkDatabase func(context.Context) error) http.Handler {
-	return NewRouter(logger, checkDatabase, NewHandler(nil, logger))
+	return NewRouter(logger, checkDatabase, NewHandler(nil, nil, logger), newHTTPMetricsForTest())
 }
 
 // Проверяет JSON-ответы для неизвестного пути и метода.

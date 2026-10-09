@@ -48,6 +48,43 @@ func testOutboxPostgres(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 		}
 		return result
 	}
+
+	t.Run("statistics include delayed retries but exclude published events", func(t *testing.T) {
+		reset(t)
+		stats, err := repo.GetOutboxStats(ctx)
+		if err != nil || stats != (model.OutboxStats{}) {
+			t.Fatalf("empty stats=%+v err=%v", stats, err)
+		}
+		oldest := time.Now().UTC().Add(-2 * time.Minute)
+		seed(t, 1, oldest, future, nil, 3)
+		seed(t, 2, oldest.Add(time.Minute), past, nil, 0)
+		seed(t, 3, past, past, &past, 0)
+		started := time.Now()
+		stats, err = repo.GetOutboxStats(ctx)
+		if err != nil || stats.PendingEvents != 2 || stats.OldestPendingAgeSeconds < started.Sub(oldest).Seconds()-0.01 || stats.OldestPendingAgeSeconds > time.Since(oldest).Seconds()+0.01 {
+			t.Fatalf("stats=%+v err=%v", stats, err)
+		}
+		if _, err := repo.MarkEventPublished(ctx, eventID(1), time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+		stats, err = repo.GetOutboxStats(ctx)
+		if err != nil || stats.PendingEvents != 1 || stats.OldestPendingAgeSeconds < 59 || stats.OldestPendingAgeSeconds > 61 {
+			t.Fatalf("remaining stats=%+v err=%v", stats, err)
+		}
+		reset(t)
+		seed(t, 1, future, future, nil, 0)
+		stats, err = repo.GetOutboxStats(ctx)
+		if err != nil || stats.PendingEvents != 1 || stats.OldestPendingAgeSeconds != 0 {
+			t.Fatalf("future stats=%+v err=%v", stats, err)
+		}
+		if _, err := repo.MarkEventPublished(ctx, eventID(1), time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+		stats, err = repo.GetOutboxStats(ctx)
+		if err != nil || stats != (model.OutboxStats{}) {
+			t.Fatalf("published stats=%+v err=%v", stats, err)
+		}
+	})
 	t.Run("filters orders limits and maps fields", func(t *testing.T) {
 		reset(t)
 		// Вставляем в обратном порядке, чтобы проверить сортировку SQL.
@@ -170,6 +207,13 @@ func testOutboxPostgres(t *testing.T, ctx context.Context, pool *pgxpool.Pool) {
 		}
 		defer held.Release()
 		calls := map[string]func(context.Context) error{
+			"stats": func(ctx context.Context) error {
+				stats, err := repo.GetOutboxStats(ctx)
+				if stats != (model.OutboxStats{}) {
+					t.Errorf("partial stats=%+v", stats)
+				}
+				return err
+			},
 			"list": func(ctx context.Context) error {
 				events, err := repo.ListPendingEvents(ctx, 1)
 				if events != nil {

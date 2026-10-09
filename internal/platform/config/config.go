@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// Настройки HTTP, БД, каталога, Kafka и логирования заказов.
+// Настройки HTTP, БД, каталога, Redis, Kafka и логирования заказов.
 type OrdersConfig struct {
 	HTTPAddr          string
 	DatabaseURL       string
@@ -16,6 +16,7 @@ type OrdersConfig struct {
 	LogLevel          slog.Level
 	KafkaBrokers      []string
 	OrderCreatedTopic string
+	RedisAddr         string
 }
 
 // Читает и проверяет настройки заказов из окружения.
@@ -32,6 +33,10 @@ func LoadOrders() (OrdersConfig, error) {
 	databasePass := os.Getenv("ORDERS_DB_PASSWORD")
 	if databasePass == "" {
 		return OrdersConfig{}, errors.New("ORDERS_DB_PASSWORD is required")
+	}
+	redisAddress, err := redisAddr()
+	if err != nil {
+		return OrdersConfig{}, err
 	}
 	level, err := logLevel()
 	if err != nil {
@@ -74,5 +79,6 @@ func LoadOrders() (OrdersConfig, error) {
 		CatalogGRPCAddr:   catalogGRPCAddr,
 		KafkaBrokers:      brokers,
 		OrderCreatedTopic: topic,
+		RedisAddr:         redisAddress,
 	}, nil
 }

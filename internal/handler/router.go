@@ -21,9 +21,13 @@ func RegisterRoutes(mux *http.ServeMux, h *Handler) {
 }
 
 // Объединяет маршруты, проверки работоспособности и журналирование.
-func NewRouter(logger *slog.Logger, checkDatabase func(context.Context) error, h *Handler) http.Handler {
+func NewRouter(logger *slog.Logger, checkDatabase func(context.Context) error, h *Handler, metrics HTTPMetrics) http.Handler {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, h)
+
+	// Экспортирует метрики и отклоняет неподдерживаемые методы.
+	mux.Handle("GET /metrics", metrics.Handler())
+	mux.HandleFunc("/metrics", h.methodNotAllowed("GET, HEAD"))
 
 	health := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -67,5 +71,5 @@ func NewRouter(logger *slog.Logger, checkDatabase func(context.Context) error, h
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusNotFound, "not_found", "route not found")
 	})
-	return requestMiddleware(logger, mux)
+	return requestMiddleware(logger, metrics, mux)
 }

@@ -51,8 +51,8 @@ func (s orderServiceStub) UpdateOrderStatus(ctx context.Context, isStaff bool, o
 // Собирает настоящий роутер с тестовым сервисом.
 func orderHandlerForTest(service Service) http.Handler {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	h := NewHandler(service, logger)
-	return NewRouter(logger, func(context.Context) error { return nil }, h)
+	h := NewHandler(service, rateLimiterFunc(allowAllOrders), logger)
+	return NewRouter(logger, func(context.Context) error { return nil }, h, newHTTPMetricsForTest())
 }
 
 const createBody = `{"restaurant_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb","delivery_address":" Москва, 1 ","items":[{"menu_item_id":"cccccccc-cccc-4ccc-8ccc-cccccccccccc","quantity":2}]}`
@@ -184,6 +184,7 @@ func TestOrderHandlersReturnServiceErrors(t *testing.T) {
 				}
 				r := httptest.NewRequest(method, path, strings.NewReader(createBody))
 				r.Header.Set("Content-Type", "application/json")
+				r.Header.Set("X-Demo-User-ID", orderUserID)
 				w := httptest.NewRecorder()
 				h.ServeHTTP(w, r)
 				var body dto.ErrorResponse
@@ -215,6 +216,7 @@ func TestCreateOrderRejectsBodyBeforeService(t *testing.T) {
 	} {
 		r := httptest.NewRequest(http.MethodPost, "/v1/orders", strings.NewReader(tc.body))
 		r.Header.Set("Content-Type", tc.contentType)
+		r.Header.Set("X-Demo-User-ID", orderUserID)
 		w := httptest.NewRecorder()
 		orderHandlerForTest(nil).ServeHTTP(w, r)
 		if w.Code != tc.status {
@@ -249,7 +251,7 @@ func TestOrderHandlersRequiredHeaders(t *testing.T) {
 	}
 }
 
-// Проверяет передачу отмены HTTP-запроса в сервис.
+// Проверяет остановку отменённого POST и передачу отмены при чтении.
 func TestOrderHandlersPropagateCancellation(t *testing.T) {
 	for _, method := range []string{http.MethodGet, http.MethodPost} {
 		t.Run(method, func(t *testing.T) {
@@ -275,9 +277,14 @@ func TestOrderHandlersPropagateCancellation(t *testing.T) {
 			}
 			r := httptest.NewRequest(method, path, strings.NewReader(createBody)).WithContext(ctx)
 			r.Header.Set("Content-Type", "application/json")
+			r.Header.Set("X-Demo-User-ID", orderUserID)
 			w := httptest.NewRecorder()
 			h.ServeHTTP(w, r)
-			if calls != 1 || w.Body.Len() != 0 {
+			wantCalls := 1
+			if method == http.MethodPost {
+				wantCalls = 0
+			}
+			if calls != wantCalls || w.Body.Len() != 0 {
 				t.Fatalf("calls=%d body=%s", calls, w.Body.String())
 			}
 		})

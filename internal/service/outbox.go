@@ -20,6 +20,13 @@ type OutboxRepository interface {
 	ListPendingEvents(ctx context.Context, limit int) ([]model.OutboxEvent, error)
 	MarkEventPublished(ctx context.Context, eventID string, publishedAt time.Time) (bool, error)
 	ScheduleEventRetry(ctx context.Context, eventID string, nextAttemptAt time.Time) (bool, error)
+	GetOutboxStats(ctx context.Context) (model.OutboxStats, error)
+}
+
+// Контракт обновления показателей очереди outbox.
+type OutboxMetrics interface {
+	SetOutboxStats(pending int64, oldestAgeSeconds float64)
+	SetOutboxStatsAvailable(available bool)
 }
 
 // Контракт отправки события с ожиданием подтверждения.
@@ -32,14 +39,16 @@ type OutboxService struct {
 	repo      OutboxRepository
 	publisher EventPublisher
 	logger    *slog.Logger
+	metrics   OutboxMetrics
 }
 
 // Связывает outbox с репозиторием, отправителем и логированием.
-func NewOutboxService(repo OutboxRepository, publisher EventPublisher, logger *slog.Logger) *OutboxService {
+func NewOutboxService(repo OutboxRepository, publisher EventPublisher, metrics OutboxMetrics, logger *slog.Logger) *OutboxService {
 	return &OutboxService{
 		repo:      repo,
 		publisher: publisher,
 		logger:    logger,
+		metrics:   metrics,
 	}
 }
 
@@ -83,6 +92,7 @@ func (s *OutboxService) publishEvent(ctx context.Context, event model.OutboxEven
 		if updated == false {
 			s.logger.Warn("outbox event was not updated",
 				"event_id", event.EventID,
+				"order_id", event.OrderID,
 				"operation", "schedule_retry",
 			)
 			return nil
@@ -103,9 +113,12 @@ func (s *OutboxService) publishEvent(ctx context.Context, event model.OutboxEven
 	if updated == false {
 		s.logger.Warn("outbox event was not updated",
 			"event_id", event.EventID,
+			"order_id", event.OrderID,
 			"operation", "mark_published",
 		)
+		return nil
 	}
+	s.logger.InfoContext(ctx, "outbox event published", "event_id", event.EventID, "order_id", event.OrderID)
 	return nil
 }
 
@@ -124,7 +137,7 @@ func (s *OutboxService) PublishBatch(ctx context.Context) error {
 	for _, event := range events {
 		err := s.publishEvent(ctx, event)
 		if err != nil {
-			return fmt.Errorf("publish outbox batch: %w", err)
+			return fmt.Errorf("publish outbox batch: event_id=%s order_id=%s: %w", event.EventID, event.OrderID, err)
 		}
 	}
 	return nil
