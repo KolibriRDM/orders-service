@@ -3,3 +3,9 @@
 .env.*
 bin
 coverage.out
+
+# Документация и результаты проверок не входят в образ.
+README.md
+.github
+scripts
+reports

@@ -124,28 +124,34 @@ func (s *OutboxService) publishEvent(ctx context.Context, event model.OutboxEven
 
 // Последовательно обрабатывает ограниченную пачку готовых событий.
 func (s *OutboxService) PublishBatch(ctx context.Context) error {
+	_, err := s.publishBatch(ctx)
+	return err
+}
+
+// Обрабатывает ограниченную пачку и возвращает число выбранных событий.
+func (s *OutboxService) publishBatch(ctx context.Context) (int, error) {
 	err := ctx.Err()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	dbCtx, cancel := context.WithTimeout(ctx, outboxDatabaseTimeout)
 	events, err := s.repo.ListPendingEvents(dbCtx, outboxBatchSize)
 	cancel()
 	if err != nil {
-		return fmt.Errorf("list pending outbox events: %w", err)
+		return 0, fmt.Errorf("list pending outbox events: %w", err)
 	}
 	for _, event := range events {
 		err := s.publishEvent(ctx, event)
 		if err != nil {
-			return fmt.Errorf("publish outbox batch: event_id=%s order_id=%s: %w", event.EventID, event.OrderID, err)
+			return 0, fmt.Errorf("publish outbox batch: event_id=%s order_id=%s: %w", event.EventID, event.OrderID, err)
 		}
 	}
-	return nil
+	return len(events), nil
 }
 
 const outboxPollInterval = time.Second
 
-// Обрабатывает outbox до отмены контекста с паузой между пачками.
+// Опустошает очередь без пауз, ожидая только после неполной пачки или ошибки.
 func (s *OutboxService) Run(ctx context.Context) {
 	err := ctx.Err()
 	if err != nil {
@@ -161,15 +167,19 @@ func (s *OutboxService) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
-			err := s.PublishBatch(ctx)
+			count, err := s.publishBatch(ctx)
 			if ctx.Err() != nil {
 				return
 			}
 			if err != nil {
 				s.logger.Error("outbox batch failed", "error", err)
 			}
-			// Следующий проход начинается после паузы, без наложения пачек.
-			timer.Reset(outboxPollInterval)
+			// Полная пачка означает возможный backlog; следующая не перекрывает текущую.
+			delay := outboxPollInterval
+			if err == nil && count == outboxBatchSize {
+				delay = 0
+			}
+			timer.Reset(delay)
 		}
 	}
 }

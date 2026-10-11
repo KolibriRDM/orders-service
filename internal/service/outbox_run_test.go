@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/KolibriRDM/orders-service/internal/model"
@@ -119,4 +120,50 @@ func TestOutboxRunCancellationWhileIdle(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("unexpected batch count=%d", calls)
 	}
+}
+
+// Проверяет быстрый разбор полной очереди и паузу после её опустошения.
+func TestOutboxRunDrainsBacklogWithoutPollingDelay(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		started := time.Now()
+		calls, published, marked := 0, 0, 0
+		repo := &outboxRepositoryStub{
+			list: func(context.Context, int) ([]model.OutboxEvent, error) {
+				calls++
+				switch calls {
+				case 1, 2:
+					if elapsed := time.Since(started); elapsed != 0 {
+						t.Fatalf("delay before full batch %d: %v", calls, elapsed)
+					}
+					events := make([]model.OutboxEvent, outboxBatchSize)
+					for i := range events {
+						events[i] = outboxFixture((calls-1)*outboxBatchSize + i)
+					}
+					return events, nil
+				case 3:
+					if time.Since(started) != 0 {
+						t.Fatal("delay while backlog remains")
+					}
+					return nil, nil
+				case 4:
+					if elapsed := time.Since(started); elapsed != outboxPollInterval {
+						t.Fatalf("idle delay=%v", elapsed)
+					}
+					cancel()
+					return nil, nil
+				default:
+					t.Fatal("relay ignored cancellation")
+					return nil, nil
+				}
+			},
+			mark: func(context.Context, string, time.Time) (bool, error) { marked++; return true, nil },
+		}
+		publisher := outboxPublisherStub(func(context.Context, model.OutboxEvent) error { published++; return nil })
+		NewOutboxService(repo, publisher, nil, slog.New(slog.NewTextHandler(io.Discard, nil))).Run(ctx)
+		if calls != 4 || published != 2*outboxBatchSize || marked != published {
+			t.Fatalf("calls=%d published=%d marked=%d", calls, published, marked)
+		}
+	})
 }
